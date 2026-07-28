@@ -10,7 +10,7 @@ const CRYPTOBOT_TOKEN = process.env.CRYPTOBOT_TOKEN || "";
 
 export function startServer(bot) {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: "10mb" }));
   app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Headers", "Content-Type, X-Telegram-Init-Data");
@@ -52,6 +52,38 @@ export function startServer(bot) {
     res.json(product);
   });
 
+  app.post("/api/subs", auth, (req, res) => {
+    const { title, price, period } = req.body;
+    if (!title || !price) return res.status(400).json({ error: "لازم اسم وسعر للخطة" });
+    const creator = getCreator(req.uid) || upsertCreator(req.uid, {});
+    const plan = { id: Date.now(), title, price: Number(price) || 0, period: period || "monthly", subscribers: 0 };
+    const subs = [...(creator.subs || []), plan];
+    upsertCreator(req.uid, { subs });
+    res.json(plan);
+  });
+
+  app.post("/api/sub-confirm", auth, async (req, res) => {
+    const { creatorId, planId } = req.body;
+    const creator = getCreator(creatorId);
+    if (!creator) return res.status(404).json({ error: "المبدع مش موجود" });
+    const plan = (creator.subs || []).find((s) => String(s.id) === String(planId));
+    if (!plan) return res.status(404).json({ error: "الخطة مش موجودة" });
+    plan.subscribers = (plan.subscribers || 0) + 1;
+    upsertCreator(creatorId, { subs: creator.subs, earnings: (creator.earnings || 0) + plan.price });
+    if (creator.groupId) {
+      try {
+        await bot.api.sendMessage(
+          creator.groupId,
+          `⭐️ اشتراك جديد في خطة "${plan.title}" ($${plan.price}/${plan.period === "yearly" ? "سنة" : "شهر"}) من ${req.tgUser.first_name || "عميل"}`
+        );
+      } catch (e) {
+        console.error("sendMessage to group failed:", e.description || e.message);
+        return res.status(200).json({ ok: true, plan, warning: "الاشتراك اتسجل بس ما وصلش إشعار للقروب: " + (e.description || e.message) });
+      }
+    }
+    res.json({ ok: true, plan });
+  });
+
   app.get("/api/gallery", auth, (req, res) => {
     const creator = getCreator(req.uid) || upsertCreator(req.uid, {});
     const items = (creator.products || []).filter((p) => p.imageUrl);
@@ -80,11 +112,16 @@ export function startServer(bot) {
       .text("📤 تسليم الصورة للعميل", `deliver_${order.id}`)
       .text("❌ رفض", `order_no_${order.id}`);
 
-    await bot.api.sendMessage(
-      creator.groupId,
-      `🖼️ طلب شراء جديد من ${order.customerName}:\n"${product.title}" — $${product.price}`,
-      { reply_markup: kb }
-    );
+    try {
+      await bot.api.sendMessage(
+        creator.groupId,
+        `🖼️ طلب شراء جديد من ${order.customerName}:\n"${product.title}" — $${product.price}`,
+        { reply_markup: kb }
+      );
+    } catch (e) {
+      console.error("sendMessage to group failed:", e.description || e.message);
+      return res.status(200).json({ ok: true, orderId: order.id, warning: "الطلب اتسجل بس ما وصلش إشعار للقروب: " + (e.description || e.message) });
+    }
 
     res.json({ ok: true, orderId: order.id });
   });
@@ -118,11 +155,16 @@ export function startServer(bot) {
       .text("✏️ تعديل السعر", `order_price_${order.id}`)
       .text("❌ رفض", `order_no_${order.id}`);
 
-    await bot.api.sendMessage(
-      creator.groupId,
-      `🦆 طلب مخصص جديد من ${order.customerName}:\n"${details}"`,
-      { reply_markup: kb }
-    );
+    try {
+      await bot.api.sendMessage(
+        creator.groupId,
+        `🦆 طلب مخصص جديد من ${order.customerName}:\n"${details}"`,
+        { reply_markup: kb }
+      );
+    } catch (e) {
+      console.error("sendMessage to group failed:", e.description || e.message);
+      return res.status(200).json({ ok: true, orderId: order.id, warning: "الطلب اتسجل بس ما وصلش إشعار للقروب: " + (e.description || e.message) });
+    }
 
     res.json({ ok: true, orderId: order.id });
   });
