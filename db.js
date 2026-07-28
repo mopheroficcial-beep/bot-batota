@@ -1,4 +1,3 @@
-// تخزين بسيط بملف JSON — يكفي للتجربة والتطوير، استبدله بقاعدة بيانات حقيقية (Postgres/SQLite) عند الإنتاج
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
 const FILE = process.env.DB_FILE || "./db.json";
@@ -18,7 +17,6 @@ export function saveDb() {
   persist(db);
 }
 
-// creator = { userId, channelId, groupId, botConnected, earnings, msgPrice, products: [], subs: [] }
 export function getCreator(userId) {
   return db.creators[userId];
 }
@@ -33,4 +31,22 @@ export function addOrder(order) {
   db.orders.push(order);
   saveDb();
   return order;
+}
+
+export function findOrder(orderId) {
+  return db.orders.find((o) => String(o.id) === String(orderId));
+}
+
+export function updateOrder(orderId, patch) {
+  const order = findOrder(orderId);
+  if (!order) return null;
+  Object.assign(order, patch);
+  saveDb();
+  return order;
+}
+
+export function findProduct(creatorId, productId) {
+  const creator = getCreator(creatorId);
+  if (!creator) return null;
+  return (creator.products || []).find((p) => String(p.id) === String(productId));
 }

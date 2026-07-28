@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Bot, InlineKeyboard, GrammyError, HttpError } from "grammy";
-import { getCreator, upsertCreator, addOrder } from "./db.js";
+import { getCreator, upsertCreator, addOrder, findOrder, updateOrder, findProduct } from "./db.js";
 import { startServer } from "./server.js";
 
 const bot = new Bot(process.env.BOT_TOKEN);
@@ -26,8 +26,6 @@ bot.callbackQuery("connect_start", async (ctx) => {
       "1) ضيفني أدمن في قناتك/قروبك (صلاحية نشر + إدارة).",
       "2) ابعت هنا يوزر القناة بالشكل ده: @channel_username",
       "3) هعمل تلقائيًا قروب خاص بيك تستقبل فيه أي طلب تخصيص من عملائك.",
-      "",
-      "⚠️ ملاحظة تقنية: Telegram Bot API مايسمحش للبوت إنه ينشئ قروب من الصفر بنفسه — المطلوب إنك تعمل قروب فاضي وتضيف البوت فيه أدمن، وبعدها البوت يتولى كل حاجة تلقائي جوه القروب ده.",
     ].join("\n")
   );
   pendingChannel.set(ctx.from.id, true);
@@ -57,11 +55,7 @@ bot.on("message:text", async (ctx, next) => {
     await ctx.reply(
       [
         `🎉 تم! القروب الخاص بيك اتفعّل: ${group}`,
-        "من دلوقتي أي:",
-        "• طلب منتج مخصص (Custom Product)",
-        "• رسالة خاصة مدفوعة",
-        "• سؤال دعم من عميل",
-        "هتوصل إشعارات عنها فورًا هنا في القروب ده، وترد عليها من جواه.",
+        "من دلوقتي أي طلب أو رسالة هتوصلك هنا فورًا.",
       ].join("\n")
     );
     return;
@@ -116,6 +110,29 @@ bot.callbackQuery(/order_no_(\d+)/, async (ctx) => {
 
 bot.callbackQuery(/order_price_(\d+)/, async (ctx) => {
   await ctx.answerCallbackQuery({ text: "ابعت السعر الجديد كرسالة" });
+});
+
+bot.callbackQuery(/deliver_(\d+)/, async (ctx) => {
+  const orderId = ctx.match[1];
+  const order = findOrder(orderId);
+  if (!order) return ctx.answerCallbackQuery({ text: "الطلب مش موجود" });
+
+  const product = findProduct(order.creatorId, order.productId);
+  if (!product || !product.imageUrl) {
+    await ctx.answerCallbackQuery({ text: "مفيش صورة مرفوعة لهذا المنتج" });
+    return;
+  }
+
+  try {
+    await bot.api.sendPhoto(order.customerId, product.imageUrl, {
+      caption: `🎉 اتفضل "${product.title}" — شكراً لدعمك!`,
+    });
+    updateOrder(orderId, { status: "delivered" });
+    await ctx.answerCallbackQuery({ text: "تم التسليم ✅" });
+    await ctx.editMessageText(ctx.callbackQuery.message.text + "\n\n✅ تم تسليم الصورة للعميل.");
+  } catch (e) {
+    await ctx.answerCallbackQuery({ text: "تعذر إرسال الصورة للعميل" });
+  }
 });
 
 bot.command("pay", async (ctx) => {
