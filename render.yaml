@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: kaffa-bot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: MINIAPP_URL
+        sync: false
+      - key: DB_FILE
+        value: ./db.json
+      - key: PORT
+        value: 3001
