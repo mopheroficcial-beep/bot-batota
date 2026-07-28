@@ -18,7 +18,7 @@ export function startServer(bot) {
   });
 
   function auth(req, res, next) {
-    const initData = req.header("X-Telegram-Init-Data") || "";
+    const initData = req.header("X-Telegram-Init-Data") || req.query.initData || (req.body && req.body.initData) || "";
     const result = verifyInitData(initData, BOT_TOKEN);
     if (!result || !result.user) {
       return res.status(401).json({ error: "بيانات دخول غير صالحة، افتح التطبيق من داخل تليجرام" });
